@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Local payment performance and decline analytics dashboard.">
+  <title>Payment Analytics</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b172a'/%3E%3Cpath d='M15 42V24h13c8 0 13 4 13 10s-5 10-13 10h-5v6h-8zm8-12v8h5c3 0 5-1 5-4s-2-4-5-4h-5z' fill='%2356b8ff'/%3E%3Crect x='42' y='17' width='7' height='30' rx='3.5' fill='%2328d7a1'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Management reporting</p>
+      <h1>Payment Analytics</h1>
+    </div>
+    <div class="data-status" id="dataStatus" aria-live="polite">Loading dashboard data…</div>
+  </header>
+
+  <main class="dashboard-shell">
+    <section class="filter-panel" aria-labelledby="filterTitle">
+      <div class="section-heading compact">
+        <div><p class="eyebrow">Analysis scope</p><h2 id="filterTitle">Global filters</h2></div>
+        <button id="resetFilters" class="text-button" type="button">Reset filters</button>
+      </div>
+      <div class="filters-grid">
+        <label>Start date<input id="startDate" type="date"></label>
+        <label>End date<input id="endDate" type="date"></label>
+        <fieldset class="merchant-filter">
+          <legend>Merchant</legend>
+          <button id="merchantButton" class="multi-select-button" type="button" aria-expanded="false" aria-controls="merchantMenu">All Merchants</button>
+          <div id="merchantMenu" class="multi-select-menu" hidden></div>
+        </fieldset>
+        <label>Currency<select id="currencyFilter"></select></label>
+        <label>Payment method<select id="paymentFilter"></select></label>
+        <label>Integration<select id="integrationFilter"></select></label>
+      </div>
+    </section>
+
+    <section class="kpi-grid" aria-label="Payment KPIs">
+      <article class="kpi-card accent-blue"><span>TPV (USD)</span><strong id="kpiTpv">—</strong></article>
+      <article class="kpi-card"><span>Order Count</span><strong id="kpiOrders">—</strong></article>
+      <article class="kpi-card accent-green"><span>Success Rate</span><strong id="kpiSuccess">—</strong></article>
+      <article class="kpi-card"><span>Approval Rate</span><strong id="kpiApproval">—</strong></article>
+      <article class="kpi-card"><span>AOV (USD)</span><strong id="kpiAov">—</strong></article>
+    </section>
+
+    <section class="panel wide">
+      <div class="section-heading"><h2>Transaction Volume &amp; Order Count</h2></div>
+      <div class="chart-wrap tall"><canvas id="volumeChart" role="img" aria-label="Daily TPV bars and order count line"></canvas><div class="chart-empty" hidden>No data for this filter selection.</div></div>
+      <div class="legend"><span><i class="bar-key"></i>TPV (USD)</span><span><i class="line-key blue"></i>Order Count</span></div>
+    </section>
+
+    <div class="two-column">
+      <section class="panel">
+        <div class="section-heading"><h2>Success &amp; Approval Rates</h2></div>
+        <div class="chart-wrap"><canvas id="rateChart" role="img" aria-label="Daily success and approval rate lines"></canvas><div class="chart-empty" hidden>No data for this filter selection.</div></div>
+        <div class="legend"><span><i class="line-key green"></i>Success Rate</span><span><i class="line-key blue"></i>Approval Rate</span></div>
+      </section>
+      <section class="panel status-panel">
+        <div class="section-heading"><h2>Transaction Status Distribution</h2></div>
+        <div class="status-layout">
+          <div class="donut" id="statusDonut" aria-label="Status distribution chart"><div><strong id="donutTotal">0</strong><span>orders</span></div></div>
+          <div class="status-list" id="statusList"></div>
+        </div>
+        <p class="note"><strong>Approval Rate</strong> excludes Closed orders. <strong>Success Rate</strong> includes them in its denominator.</p>
+      </section>
+    </div>
+
+    <section class="panel wide">
+      <div class="section-heading"><h2>Decline Reason Analysis</h2></div>
+      <div class="table-scroll"><table><thead><tr><th>Decline Reason</th><th class="numeric">Order Count</th><th class="numeric">Order Count %</th></tr></thead><tbody id="declineTable"></tbody></table></div>
+    </section>
+
+    <section class="panel wide">
+      <div class="section-heading split">
+        <h2>Breakdown Analysis</h2>
+        <label class="inline-select">Break down by<select id="breakdownDimension"><option value="currency">Currency</option><option value="payment_method">Payment Method</option><option value="integration">Integration</option></select></label>
+      </div>
+      <div class="table-scroll"><table class="sortable-table"><thead><tr><th>Dimension</th><th class="numeric">TPV USD</th><th class="numeric">TPV %</th><th class="numeric">Order Count</th><th class="numeric">Order Count %</th><th class="numeric">Success Rate</th><th class="numeric">Approval Rate</th><th class="numeric">AOV USD</th></tr></thead><tbody id="breakdownTable"></tbody></table></div>
+    </section>
+
+    <section class="panel wide">
+      <div class="section-heading"><div><h2>Merchant Performance</h2><p class="section-copy">Ignores the Merchant filter; respects date, currency, payment method and integration.</p></div></div>
+      <div class="table-scroll"><table class="sortable-table" id="merchantTable"><thead><tr><th data-sort="merchant">Merchant</th><th data-sort="TPV_USD" class="numeric">TPV USD</th><th data-sort="TPV_Share" class="numeric">TPV %</th><th data-sort="Successful_Orders" class="numeric">Order Count</th><th data-sort="Order_Share" class="numeric">Order Count %</th><th data-sort="Success_Rate" class="numeric">Success Rate</th><th data-sort="Approval_Rate" class="numeric">Approval Rate</th><th data-sort="AOV_USD" class="numeric">AOV USD</th></tr></thead><tbody id="merchantTableBody"></tbody></table></div>
+    </section>
+  </main>
+  <div id="chartTooltip" class="chart-tooltip" role="tooltip" hidden></div>
+  <footer>Aggregated management analytics · Transaction-level data remains local</footer>
+  <script src="dashboard.js"></script>
+</body>
+</html>
