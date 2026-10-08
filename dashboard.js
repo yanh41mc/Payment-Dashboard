@@ -269,7 +269,7 @@ function bindChartTooltips() {
 document.querySelectorAll("#merchantTable th[data-sort]").forEach((th)=>th.addEventListener("click",()=>{ const key=th.dataset.sort; state.merchantSort.direction=state.merchantSort.key===key ? -state.merchantSort.direction : (key==="merchant"?1:-1); state.merchantSort.key=key; renderMerchants(); }));
 window.addEventListener("resize",()=>{ clearTimeout(window.__chartTimer); window.__chartTimer=setTimeout(renderAll,120); });
 
-fetch("dashboard_data.json")
+fetch("dashboard_data.json", {cache:"no-store"})
   .then((response)=>{ if(!response.ok) throw new Error(`HTTP ${response.status}`); return response.json(); })
   .then((data)=>{ state.data=data; setupFilters(); renderAll(); $("dataStatus").textContent=`Daily data · ${data.metadata.date_min} to ${data.metadata.date_max}`; })
   .catch((error)=>{ $("dataStatus").textContent="Dashboard data could not be loaded."; document.querySelector("main").innerHTML=`<section class="panel"><h2>Unable to load dashboard data</h2><p class="section-copy">Start a local web server from the project root, then open the dashboard URL. ${escapeHtml(error.message)}</p></section>`; });
