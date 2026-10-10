@@ -156,7 +156,11 @@ function drawAxes(ctx, w, h, labels, maxLeft, leftFormatter, maxRight = null, ri
   ctx.font = "12px system-ui"; ctx.fillStyle = "#7f92aa"; ctx.strokeStyle = "#20344e"; ctx.lineWidth = 1;
   for (let i = 0; i <= 4; i++) { const y = p.t + (h - p.t - p.b) * i / 4; ctx.beginPath(); ctx.moveTo(p.l, y); ctx.lineTo(w - p.r, y); ctx.stroke(); ctx.textAlign = "right"; ctx.fillText(leftFormatter(maxLeft * (1 - i / 4)), p.l - 9, y + 4); if (maxRight != null) { ctx.textAlign = "left"; ctx.fillText(rightFormatter(maxRight * (1 - i / 4)), w - p.r + 9, y + 4); } }
   const step = Math.max(1, Math.ceil(labels.length / Math.max(2, Math.floor((w - p.l - p.r) / 90))));
-  labels.forEach((label, i) => { if (i % step !== 0 && i !== labels.length - 1) return; const x = p.l + (w - p.l - p.r) * (i + .5) / labels.length; ctx.textAlign = "center"; ctx.fillText(label.slice(5), x, h - 14); });
+  const tickIndexes=[]; for(let i=0;i<labels.length;i+=step) tickIndexes.push(i);
+  const lastIndex=labels.length-1, previous=tickIndexes[tickIndexes.length-1];
+  if(previous!==lastIndex){if(lastIndex-previous<Math.max(2,step*.7))tickIndexes[tickIndexes.length-1]=lastIndex;else tickIndexes.push(lastIndex);}
+  const ticks=new Set(tickIndexes);
+  labels.forEach((label, i) => { if (!ticks.has(i)) return; const x = p.l + (w - p.l - p.r) * (i + .5) / labels.length; ctx.textAlign = "center"; ctx.fillText(label.slice(5), x, h - 14); });
   return p;
 }
 
