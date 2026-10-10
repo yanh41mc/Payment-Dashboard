@@ -4,7 +4,8 @@ const state = {
   data: null,
   selectedMerchants: new Set(),
   merchantSort: { key: "TPV_USD", direction: -1 },
-  chartData: { daily: [], statuses: [] },
+  breakdownSort: { key: "TPV_USD", direction: -1 },
+  chartData: { daily: [], statuses: [], declines: [] },
 };
 const $ = (id) => document.getElementById(id);
 const FILTER_KEYS = { currencyFilter: "currency", paymentFilter: "payment_method", integrationFilter: "integration" };
@@ -19,18 +20,29 @@ function sumMeasures(rows) {
   return rows.reduce((a, r) => ({
     TPV_USD: a.TPV_USD + Number(r.TPV_USD || 0),
     Total_Orders: a.Total_Orders + Number(r.Total_Orders || 0),
+    Paid_Orders: a.Paid_Orders + Number(r.Paid_Orders || 0),
     Successful_Orders: a.Successful_Orders + Number(r.Successful_Orders || 0),
     Failed_Orders: a.Failed_Orders + Number(r.Failed_Orders || 0),
     Closed_Orders: a.Closed_Orders + Number(r.Closed_Orders || 0),
-  }), { TPV_USD: 0, Total_Orders: 0, Successful_Orders: 0, Failed_Orders: 0, Closed_Orders: 0 });
+    Partially_Refunded_Orders: a.Partially_Refunded_Orders + Number(r.Partially_Refunded_Orders || 0),
+    Fully_Refunded_Orders: a.Fully_Refunded_Orders + Number(r.Fully_Refunded_Orders || 0),
+    Refunded_Orders: a.Refunded_Orders + Number(r.Refunded_Orders || 0),
+    Disputed_Orders: a.Disputed_Orders + Number(r.Disputed_Orders || 0),
+  }), {
+    TPV_USD: 0, Total_Orders: 0, Paid_Orders: 0, Successful_Orders: 0,
+    Failed_Orders: 0, Closed_Orders: 0, Partially_Refunded_Orders: 0,
+    Fully_Refunded_Orders: 0, Refunded_Orders: 0, Disputed_Orders: 0,
+  });
 }
 
 function derived(m) {
   return {
     ...m,
-    Success_Rate: m.Total_Orders === 0 ? 0 : m.Successful_Orders / m.Total_Orders,
-    Approval_Rate: safeDivide(m.Successful_Orders, m.Successful_Orders + m.Failed_Orders),
-    AOV_USD: safeDivide(m.TPV_USD, m.Successful_Orders),
+    Success_Rate: safeDivide(m.Paid_Orders, m.Total_Orders),
+    Approval_Rate: safeDivide(m.Paid_Orders, m.Paid_Orders + m.Failed_Orders),
+    Refunded_Order_Rate: safeDivide(m.Refunded_Orders, m.Paid_Orders),
+    Disputed_Order_Rate: safeDivide(m.Disputed_Orders, m.Paid_Orders),
+    AOV_USD: safeDivide(m.TPV_USD, m.Paid_Orders),
   };
 }
 
@@ -124,10 +136,12 @@ function updateMerchantButton(total) {
 function renderKpis(rows) {
   const m = derived(sumMeasures(rows));
   $("kpiTpv").textContent = fmtMoney.format(m.TPV_USD);
-  $("kpiOrders").textContent = fmtCount.format(m.Successful_Orders);
+  $("kpiOrders").textContent = fmtCount.format(m.Paid_Orders);
   $("kpiSuccess").textContent = fmtPct(m.Success_Rate);
   $("kpiApproval").textContent = fmtPct(m.Approval_Rate);
   $("kpiAov").textContent = m.AOV_USD == null ? "N/A" : fmtMoney.format(m.AOV_USD);
+  $("kpiRefunded").textContent = fmtPct(m.Refunded_Order_Rate);
+  $("kpiDisputed").textContent = fmtPct(m.Disputed_Order_Rate);
 }
 
 function sizeCanvas(canvas) {
@@ -149,11 +163,11 @@ function drawAxes(ctx, w, h, labels, maxLeft, leftFormatter, maxRight = null, ri
 function renderVolumeChart(daily) {
   const canvas = $("volumeChart"), empty = canvas.parentElement.querySelector(".chart-empty"); empty.hidden = daily.length > 0; canvas.hidden = daily.length === 0; if (!daily.length) return;
   state.chartData.daily = daily;
-  const { ctx, w, h } = sizeCanvas(canvas); const maxTpv = Math.max(...daily.map((d) => d.TPV_USD), 1); const maxOrders = Math.max(...daily.map((d) => d.Successful_Orders), 1);
+  const { ctx, w, h } = sizeCanvas(canvas); const maxTpv = Math.max(...daily.map((d) => d.TPV_USD), 1); const maxOrders = Math.max(...daily.map((d) => d.Paid_Orders), 1);
   const p = drawAxes(ctx, w, h, daily.map((d) => d.label), maxTpv, (v) => v >= 1000 ? `$${(v/1000).toFixed(0)}k` : `$${v.toFixed(0)}`, maxOrders, (v) => Math.round(v));
   const plotW = w - p.l - p.r, plotH = h - p.t - p.b, slot = plotW / daily.length;
   daily.forEach((d, i) => { const bh = plotH * d.TPV_USD / maxTpv; ctx.fillStyle = "#28d7a1aa"; ctx.fillRect(p.l + i * slot + slot * .18, p.t + plotH - bh, Math.max(3, slot * .5), bh); });
-  ctx.strokeStyle = "#56b8ff"; ctx.lineWidth = 2.5; ctx.beginPath(); daily.forEach((d, i) => { const x = p.l + slot * (i + .5), y = p.t + plotH * (1 - d.Successful_Orders / maxOrders); i ? ctx.lineTo(x,y) : ctx.moveTo(x,y); }); ctx.stroke();
+  ctx.strokeStyle = "#56b8ff"; ctx.lineWidth = 2.5; ctx.beginPath(); daily.forEach((d, i) => { const x = p.l + slot * (i + .5), y = p.t + plotH * (1 - d.Paid_Orders / maxOrders); i ? ctx.lineTo(x,y) : ctx.moveTo(x,y); }); ctx.stroke();
 }
 
 function renderRateChart(daily) {
@@ -164,7 +178,14 @@ function renderRateChart(daily) {
 
 function renderStatus(rows) {
   const m = sumMeasures(rows), total = m.Total_Orders || 1;
-  const statuses = [["Successful",m.Successful_Orders,"#28d7a1"],["Failed",m.Failed_Orders,"#ff6b7a"],["Closed",m.Closed_Orders,"#ffb454"]];
+  const statuses = [
+    ["Successful",m.Successful_Orders,"#28d7a1"],
+    ["Partially Refunded",m.Partially_Refunded_Orders,"#56b8ff"],
+    ["Fully Refunded",m.Fully_Refunded_Orders,"#8b7cff"],
+    ["Disputed",m.Disputed_Orders,"#ef7fba"],
+    ["Failed",m.Failed_Orders,"#ff6b7a"],
+    ["Closed",m.Closed_Orders,"#ffb454"],
+  ];
   state.chartData.statuses = statuses;
   let pos=0; const stops=[]; statuses.forEach(([,value,color])=>{ const start=pos; pos += value/total*100; stops.push(`${color} ${start}% ${pos}%`); });
   $("statusDonut").style.background = m.Total_Orders ? `conic-gradient(${stops.join(",")})` : "#20344e";
@@ -176,29 +197,47 @@ function renderDeclines() {
   const filters=currentFilters(true); const rows=state.data.declines.filter((r)=>matches(r,filters)); const counts=new Map();
   rows.forEach((r)=>counts.set(r.channel_response,(counts.get(r.channel_response)||0)+Number(r.Failed_Order_Count||0)));
   const sorted=[...counts.entries()].map(([reason,count])=>({reason,count})).sort((a,b)=>b.count-a.count); const total=sorted.reduce((a,r)=>a+r.count,0);
-  const visible=sorted.slice(0,15);
+  const visible=sorted.slice(0,15).map((r)=>({...r,share:safeDivide(r.count,total)}));
+  state.chartData.declines=visible;
+  renderDeclineChart(visible);
   $("declineTable").innerHTML=visible.length?visible.map((r)=>`<tr><td>${escapeHtml(r.reason)}</td><td class="numeric">${fmtCount.format(r.count)}</td><td class="numeric">${fmtPct(safeDivide(r.count,total))}</td></tr>`).join(""):emptyRow(3);
 }
 
-function tableMetricRow(r,total,label) { return `<tr><td>${escapeHtml(label)}</td><td class="numeric">${fmtMoney.format(r.TPV_USD)}</td><td class="numeric">${fmtPct(safeDivide(r.TPV_USD,total.TPV_USD))}</td><td class="numeric">${fmtCount.format(r.Successful_Orders)}</td><td class="numeric">${fmtPct(safeDivide(r.Successful_Orders,total.Successful_Orders))}</td><td class="numeric">${fmtPct(r.Success_Rate)}</td><td class="numeric">${fmtPct(r.Approval_Rate)}</td><td class="numeric">${r.AOV_USD==null?"N/A":fmtMoney.format(r.AOV_USD)}</td></tr>`; }
+function renderDeclineChart(rows) {
+  const canvas=$("declineChart"), empty=canvas.parentElement.querySelector(".chart-empty"); empty.hidden=rows.length>0; canvas.hidden=rows.length===0; if(!rows.length) return;
+  const {ctx,w,h}=sizeCanvas(canvas); const p={l:Math.min(235,Math.max(145,w*.24)),r:28,t:14,b:34}; const plotW=w-p.l-p.r, plotH=h-p.t-p.b; const rowH=plotH/rows.length; const maxCount=Math.max(...rows.map((r)=>r.count),1);
+  ctx.font="12px system-ui"; ctx.strokeStyle="#20344e"; ctx.fillStyle="#7f92aa"; ctx.lineWidth=1;
+  for(let i=0;i<=5;i++){const x=p.l+plotW*i/5;ctx.beginPath();ctx.moveTo(x,p.t);ctx.lineTo(x,h-p.b);ctx.stroke();ctx.textAlign="center";ctx.fillText(fmtCount.format(Math.round(maxCount*i/5)),x,h-10);}
+  rows.forEach((r,i)=>{const y=p.t+i*rowH+rowH*.18;const barH=Math.max(7,rowH*.62);ctx.fillStyle=i===0?"#9e8cff":"#6f7fe9";ctx.fillRect(p.l,y,plotW*r.count/maxCount,barH);ctx.fillStyle="#dbe5f2";ctx.textAlign="right";const maxChars=Math.max(12,Math.floor(p.l/7.5));const label=r.reason.length>maxChars?`${r.reason.slice(0,maxChars-1)}…`:r.reason;ctx.fillText(label,p.l-10,y+barH*.72);});
+}
+
+function breakdownMetricRow(r,total) { return `<tr><td>${escapeHtml(r.label)}</td><td class="numeric">${fmtMoney.format(r.TPV_USD)}</td><td class="numeric">${fmtPct(r.TPV_Share)}</td><td class="numeric">${fmtCount.format(r.Paid_Orders)}</td><td class="numeric">${fmtPct(r.Order_Share)}</td><td class="numeric">${fmtPct(r.Success_Rate)}</td><td class="numeric">${fmtPct(r.Approval_Rate)}</td><td class="numeric">${r.AOV_USD==null?"N/A":fmtMoney.format(r.AOV_USD)}</td></tr>`; }
+function merchantMetricRow(r) { return `<tr><td>${escapeHtml(r.label)}</td><td class="numeric">${fmtMoney.format(r.TPV_USD)}</td><td class="numeric">${fmtPct(r.TPV_Share)}</td><td class="numeric">${fmtCount.format(r.Paid_Orders)}</td><td class="numeric">${fmtPct(r.Order_Share)}</td><td class="numeric">${fmtPct(r.Success_Rate)}</td><td class="numeric">${fmtPct(r.Approval_Rate)}</td><td class="numeric">${r.AOV_USD==null?"N/A":fmtMoney.format(r.AOV_USD)}</td><td class="numeric">${fmtPct(r.Refunded_Order_Rate)}</td><td class="numeric">${fmtPct(r.Disputed_Order_Rate)}</td></tr>`; }
 function emptyRow(cols) { return `<tr class="empty-row"><td colspan="${cols}">No data for this filter selection.</td></tr>`; }
 
+function sortMetricRows(rows, sort) {
+  const {key,direction}=sort;
+  rows.sort((a,b)=>typeof a[key]==="string"?direction*a[key].localeCompare(b[key]):direction*((a[key]??-Infinity)-(b[key]??-Infinity)));
+}
+
+function updateSortHeaders(selector, sort) {
+  document.querySelectorAll(`${selector} th[data-sort]`).forEach((th)=>{const active=th.dataset.sort===sort.key;th.classList.toggle("active-sort",active);if(active)th.dataset.direction=sort.direction===1?"asc":"desc";else delete th.dataset.direction;});
+}
+
 function renderBreakdown(rows) {
-  const total=sumMeasures(rows), key=$("breakdownDimension").value; const groups=grouped(rows,key).sort((a,b)=>b.TPV_USD-a.TPV_USD);
-  $("breakdownTable").innerHTML=groups.length?groups.map((r)=>tableMetricRow(r,total,r.label)).join(""):emptyRow(8);
+  const total=sumMeasures(rows), key=$("breakdownDimension").value; const groups=grouped(rows,key).map((r)=>({...r,TPV_Share:safeDivide(r.TPV_USD,total.TPV_USD),Order_Share:safeDivide(r.Paid_Orders,total.Paid_Orders)}));
+  sortMetricRows(groups,state.breakdownSort); updateSortHeaders("#breakdownTableElement",state.breakdownSort);
+  $("breakdownTable").innerHTML=groups.length?groups.map((r)=>breakdownMetricRow(r,total)).join(""):emptyRow(8);
 }
 
 function merchantRows() {
   const rows=filteredPerformance(false), total=sumMeasures(rows);
-  return grouped(rows,"merchant").map((r)=>({...r,TPV_Share:safeDivide(r.TPV_USD,total.TPV_USD),Order_Share:safeDivide(r.Successful_Orders,total.Successful_Orders)}));
+  return grouped(rows,"merchant").map((r)=>({...r,TPV_Share:safeDivide(r.TPV_USD,total.TPV_USD),Order_Share:safeDivide(r.Paid_Orders,total.Paid_Orders)}));
 }
 
 function renderMerchants() {
-  const rows=merchantRows(); const {key,direction}=state.merchantSort;
-  rows.sort((a,b)=> typeof a[key]==="string" ? direction*a[key].localeCompare(b[key]) : direction*((a[key]??-Infinity)-(b[key]??-Infinity)));
-  const total=sumMeasures(rows);
-  $("merchantTableBody").innerHTML=rows.length?rows.map((r)=>tableMetricRow(r,total,r.label)).join(""):emptyRow(8);
-  document.querySelectorAll("#merchantTable th").forEach((th)=>th.classList.toggle("active-sort",th.dataset.sort===key));
+  const rows=merchantRows(); sortMetricRows(rows,state.merchantSort); updateSortHeaders("#merchantTable",state.merchantSort);
+  $("merchantTableBody").innerHTML=rows.length?rows.map(merchantMetricRow).join(""):emptyRow(10);
 }
 
 function renderAll() {
@@ -237,7 +276,7 @@ function bindChartTooltips() {
     if (!point) return hideTooltip();
     showTooltip(event, fmtDate(point.label), [
       `TPV (USD): ${fmtMoney.format(point.TPV_USD)}`,
-      `Order Count: ${fmtCount.format(point.Successful_Orders)}`,
+      `Order Count: ${fmtCount.format(point.Paid_Orders)}`,
     ]);
   });
   $("rateChart").addEventListener("mousemove", (event) => {
@@ -264,9 +303,19 @@ function bindChartTooltips() {
   });
   $("statusDonut").addEventListener("mouseleave", hideTooltip);
 
+  $("declineChart").addEventListener("mousemove", (event) => {
+    const rows=state.chartData.declines; if(!rows.length) return hideTooltip();
+    const rect=event.currentTarget.getBoundingClientRect(); const top=14,bottom=34; const y=event.clientY-rect.top;
+    if(y<top||y>rect.height-bottom) return hideTooltip();
+    const index=Math.min(rows.length-1,Math.floor((y-top)/(rect.height-top-bottom)*rows.length)); const row=rows[index];
+    showTooltip(event,row.reason,[`Failed Orders: ${fmtCount.format(row.count)}`,`Order Count %: ${fmtPct(row.share)}`]);
+  });
+  $("declineChart").addEventListener("mouseleave",hideTooltip);
+
 }
 
-document.querySelectorAll("#merchantTable th[data-sort]").forEach((th)=>th.addEventListener("click",()=>{ const key=th.dataset.sort; state.merchantSort.direction=state.merchantSort.key===key ? -state.merchantSort.direction : (key==="merchant"?1:-1); state.merchantSort.key=key; renderMerchants(); }));
+document.querySelectorAll("#merchantTable th[data-sort]").forEach((th)=>th.addEventListener("click",()=>{ const key=th.dataset.sort; state.merchantSort.direction=state.merchantSort.key===key ? -state.merchantSort.direction : (key==="label"?1:-1); state.merchantSort.key=key; renderMerchants(); }));
+document.querySelectorAll("#breakdownTableElement th[data-sort]").forEach((th)=>th.addEventListener("click",()=>{ const key=th.dataset.sort; state.breakdownSort.direction=state.breakdownSort.key===key ? -state.breakdownSort.direction : (key==="label"?1:-1); state.breakdownSort.key=key; renderBreakdown(filteredPerformance(true)); }));
 window.addEventListener("resize",()=>{ clearTimeout(window.__chartTimer); window.__chartTimer=setTimeout(renderAll,120); });
 
 fetch("dashboard_data.json", {cache:"no-store"})

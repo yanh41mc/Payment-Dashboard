@@ -43,6 +43,8 @@
       <article class="kpi-card accent-green"><span>Success Rate</span><strong id="kpiSuccess">—</strong></article>
       <article class="kpi-card"><span>Approval Rate</span><strong id="kpiApproval">—</strong></article>
       <article class="kpi-card"><span>AOV (USD)</span><strong id="kpiAov">—</strong></article>
+      <article class="kpi-card"><span>Refunded Order Rate</span><strong id="kpiRefunded">—</strong></article>
+      <article class="kpi-card"><span>Disputed Order Rate</span><strong id="kpiDisputed">—</strong></article>
     </section>
 
     <section class="panel wide">
@@ -63,12 +65,12 @@
           <div class="donut" id="statusDonut" aria-label="Status distribution chart"><div><strong id="donutTotal">0</strong><span>orders</span></div></div>
           <div class="status-list" id="statusList"></div>
         </div>
-        <p class="note"><strong>Approval Rate</strong> excludes Closed orders. <strong>Success Rate</strong> includes them in its denominator.</p>
       </section>
     </div>
 
     <section class="panel wide">
       <div class="section-heading"><h2>Decline Reason Analysis</h2></div>
+      <div class="chart-wrap decline-chart"><canvas id="declineChart" role="img" aria-label="Top decline reasons by failed order count"></canvas><div class="chart-empty" hidden>No decline data for this filter selection.</div></div>
       <div class="table-scroll"><table><thead><tr><th>Decline Reason</th><th class="numeric">Order Count</th><th class="numeric">Order Count %</th></tr></thead><tbody id="declineTable"></tbody></table></div>
     </section>
 
@@ -77,16 +79,16 @@
         <h2>Breakdown Analysis</h2>
         <label class="inline-select">Break down by<select id="breakdownDimension"><option value="currency">Currency</option><option value="payment_method">Payment Method</option><option value="integration">Integration</option></select></label>
       </div>
-      <div class="table-scroll"><table class="sortable-table"><thead><tr><th>Dimension</th><th class="numeric">TPV USD</th><th class="numeric">TPV %</th><th class="numeric">Order Count</th><th class="numeric">Order Count %</th><th class="numeric">Success Rate</th><th class="numeric">Approval Rate</th><th class="numeric">AOV USD</th></tr></thead><tbody id="breakdownTable"></tbody></table></div>
+      <div class="table-scroll"><table class="sortable-table" id="breakdownTableElement"><thead><tr><th data-sort="label">Dimension</th><th data-sort="TPV_USD" class="numeric">TPV USD</th><th data-sort="TPV_Share" class="numeric">TPV %</th><th data-sort="Paid_Orders" class="numeric">Order Count</th><th data-sort="Order_Share" class="numeric">Order Count %</th><th data-sort="Success_Rate" class="numeric">Success Rate</th><th data-sort="Approval_Rate" class="numeric">Approval Rate</th><th data-sort="AOV_USD" class="numeric">AOV USD</th></tr></thead><tbody id="breakdownTable"></tbody></table></div>
     </section>
 
     <section class="panel wide">
-      <div class="section-heading"><div><h2>Merchant Performance</h2><p class="section-copy">Ignores the Merchant filter; respects date, currency, payment method and integration.</p></div></div>
-      <div class="table-scroll"><table class="sortable-table" id="merchantTable"><thead><tr><th data-sort="merchant">Merchant</th><th data-sort="TPV_USD" class="numeric">TPV USD</th><th data-sort="TPV_Share" class="numeric">TPV %</th><th data-sort="Successful_Orders" class="numeric">Order Count</th><th data-sort="Order_Share" class="numeric">Order Count %</th><th data-sort="Success_Rate" class="numeric">Success Rate</th><th data-sort="Approval_Rate" class="numeric">Approval Rate</th><th data-sort="AOV_USD" class="numeric">AOV USD</th></tr></thead><tbody id="merchantTableBody"></tbody></table></div>
+      <div class="section-heading"><h2>Merchant Performance</h2></div>
+      <div class="table-scroll"><table class="sortable-table" id="merchantTable"><thead><tr><th data-sort="label">Merchant</th><th data-sort="TPV_USD" class="numeric">TPV USD</th><th data-sort="TPV_Share" class="numeric">TPV %</th><th data-sort="Paid_Orders" class="numeric">Order Count</th><th data-sort="Order_Share" class="numeric">Order Count %</th><th data-sort="Success_Rate" class="numeric">Success Rate</th><th data-sort="Approval_Rate" class="numeric">Approval Rate</th><th data-sort="AOV_USD" class="numeric">AOV USD</th><th data-sort="Refunded_Order_Rate" class="numeric">Refunded Order Rate</th><th data-sort="Disputed_Order_Rate" class="numeric">Disputed Order Rate</th></tr></thead><tbody id="merchantTableBody"></tbody></table></div>
     </section>
   </main>
   <div id="chartTooltip" class="chart-tooltip" role="tooltip" hidden></div>
   <footer>Aggregated management analytics · Transaction-level data remains local</footer>
-  <script src="dashboard.js?v=20261008-cache-fix"></script>
+  <script src="dashboard.js?v=1.2"></script>
 </body>
 </html>
