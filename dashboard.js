@@ -5,12 +5,12 @@ const state = {
   selectedMerchants: new Set(),
   merchantSort: { key: "TPV_USD", direction: -1 },
   breakdownSort: { key: "TPV_USD", direction: -1 },
-  chartData: { daily: [], statuses: [], declines: [] },
+  chartData: { daily: [], statuses: [], declines: [], breakdownTpv: [], breakdownRates: [] },
 };
 const $ = (id) => document.getElementById(id);
 const FILTER_KEYS = { currencyFilter: "currency", paymentFilter: "payment_method", integrationFilter: "integration" };
 
-const fmtMoney = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const fmtMoney = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0 });
 const fmtCount = new Intl.NumberFormat("en-US");
 const fmtPct = (value) => value == null ? "N/A" : `${(value * 100).toFixed(1)}%`;
 const safeDivide = (a, b) => b === 0 ? null : a / b;
@@ -204,7 +204,6 @@ function renderDeclines() {
   const visible=sorted.slice(0,15).map((r)=>({...r,share:safeDivide(r.count,total)}));
   state.chartData.declines=visible;
   renderDeclineChart(visible);
-  $("declineTable").innerHTML=visible.length?visible.map((r)=>`<tr><td>${escapeHtml(r.reason)}</td><td class="numeric">${fmtCount.format(r.count)}</td><td class="numeric">${fmtPct(safeDivide(r.count,total))}</td></tr>`).join(""):emptyRow(3);
 }
 
 function renderDeclineChart(rows) {
@@ -232,6 +231,29 @@ function renderBreakdown(rows) {
   const total=sumMeasures(rows), key=$("breakdownDimension").value; const groups=grouped(rows,key).map((r)=>({...r,TPV_Share:safeDivide(r.TPV_USD,total.TPV_USD),Order_Share:safeDivide(r.Paid_Orders,total.Paid_Orders)}));
   sortMetricRows(groups,state.breakdownSort); updateSortHeaders("#breakdownTableElement",state.breakdownSort);
   $("breakdownTable").innerHTML=groups.length?groups.map((r)=>breakdownMetricRow(r,total)).join(""):emptyRow(8);
+  renderBreakdownCharts(groups);
+}
+
+const breakdownColors=["#28d7a1","#56b8ff","#8b7cff","#ef7fba","#ffb454","#ff6b7a","#55c2c8","#a6d96a","#cf8cff","#f28e6b"];
+
+function renderBreakdownCharts(groups) {
+  const tpvRows=[...groups].filter((r)=>r.TPV_USD>0).sort((a,b)=>b.TPV_USD-a.TPV_USD);
+  const totalTpv=tpvRows.reduce((sum,r)=>sum+r.TPV_USD,0);
+  state.chartData.breakdownTpv=tpvRows.map((r,i)=>({...r,color:breakdownColors[i%breakdownColors.length]}));
+  const donut=$("breakdownDonut"), empty=$("breakdownDonutEmpty");
+  empty.hidden=totalTpv>0; donut.hidden=totalTpv===0; $("breakdownLegend").hidden=totalTpv===0;
+  if(totalTpv>0){let pos=0;const stops=[];state.chartData.breakdownTpv.forEach((r)=>{const start=pos;pos+=r.TPV_USD/totalTpv*100;stops.push(`${r.color} ${start}% ${pos}%`);});donut.style.background=`conic-gradient(${stops.join(",")})`;$("breakdownLegend").innerHTML=state.chartData.breakdownTpv.map((r)=>`<div class="status-row"><i style="background:${r.color}"></i><span title="${escapeHtml(r.label)}">${escapeHtml(r.label)}</span><strong>${fmtPct(r.TPV_USD/totalTpv)}</strong></div>`).join("");}
+  const rateRows=[...groups].filter((r)=>r.Success_Rate!=null).sort((a,b)=>b.Success_Rate-a.Success_Rate);
+  state.chartData.breakdownRates=rateRows;
+  renderBreakdownRateChart(rateRows);
+}
+
+function renderBreakdownRateChart(rows) {
+  const canvas=$("breakdownRateChart"), empty=canvas.parentElement.querySelector(".chart-empty");empty.hidden=rows.length>0;canvas.hidden=rows.length===0;if(!rows.length)return;
+  const {ctx,w,h}=sizeCanvas(canvas);const p={l:Math.min(190,Math.max(115,w*.30)),r:28,t:14,b:34};const plotW=w-p.l-p.r,plotH=h-p.t-p.b,rowH=plotH/rows.length;
+  ctx.font="12px system-ui";ctx.strokeStyle="#20344e";ctx.fillStyle="#7f92aa";ctx.lineWidth=1;
+  for(let i=0;i<=4;i++){const x=p.l+plotW*i/4;ctx.beginPath();ctx.moveTo(x,p.t);ctx.lineTo(x,h-p.b);ctx.stroke();ctx.textAlign="center";ctx.fillText(`${i*25}%`,x,h-10);}
+  rows.forEach((r,i)=>{const y=p.t+i*rowH+rowH*.18,barH=Math.max(8,rowH*.62);ctx.fillStyle="#28d7a1";ctx.fillRect(p.l,y,plotW*r.Success_Rate,barH);ctx.fillStyle="#dbe5f2";ctx.textAlign="right";const maxChars=Math.max(10,Math.floor(p.l/7.5));const label=r.label.length>maxChars?`${r.label.slice(0,maxChars-1)}…`:r.label;ctx.fillText(label,p.l-10,y+barH*.72);});
 }
 
 function merchantRows() {
@@ -315,6 +337,18 @@ function bindChartTooltips() {
     showTooltip(event,row.reason,[`Failed Orders: ${fmtCount.format(row.count)}`,`Order Count %: ${fmtPct(row.share)}`]);
   });
   $("declineChart").addEventListener("mouseleave",hideTooltip);
+
+  $("breakdownDonut").addEventListener("mousemove",(event)=>{
+    const rows=state.chartData.breakdownTpv,total=rows.reduce((sum,r)=>sum+r.TPV_USD,0);if(!total)return hideTooltip();
+    const rect=event.currentTarget.getBoundingClientRect(),x=event.clientX-(rect.left+rect.width/2),y=event.clientY-(rect.top+rect.height/2),radius=Math.hypot(x,y);if(radius<rect.width*.15||radius>rect.width/2)return hideTooltip();
+    const pct=(Math.atan2(x,-y)+Math.PI*2)%(Math.PI*2)/(Math.PI*2);let cumulative=0;const row=rows.find((r)=>{cumulative+=r.TPV_USD/total;return pct<=cumulative;});if(row)showTooltip(event,row.label,[`TPV (USD): ${fmtMoney.format(row.TPV_USD)}`,`TPV %: ${fmtPct(row.TPV_USD/total)}`]);
+  });
+  $("breakdownDonut").addEventListener("mouseleave",hideTooltip);
+
+  $("breakdownRateChart").addEventListener("mousemove",(event)=>{
+    const rows=state.chartData.breakdownRates;if(!rows.length)return hideTooltip();const rect=event.currentTarget.getBoundingClientRect(),top=14,bottom=34,y=event.clientY-rect.top;if(y<top||y>rect.height-bottom)return hideTooltip();const index=Math.min(rows.length-1,Math.floor((y-top)/(rect.height-top-bottom)*rows.length)),row=rows[index];showTooltip(event,row.label,[`Success Rate: ${fmtPct(row.Success_Rate)}`]);
+  });
+  $("breakdownRateChart").addEventListener("mouseleave",hideTooltip);
 
 }
 
